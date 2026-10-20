@@ -1,0 +1,28 @@
+name: Dagelijkse herinneringen
+
+# Eén keer per dag rond 10 uur Nederlandse tijd. Dit houdt ook je gratis Supabase-project wakker.
+on:
+  schedule:
+    - cron: "47 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  herinneringen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Herinneringen versturen
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -sS --fail-with-body -X POST \
+            -H "x-cron-secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            "https://faphipbazbgyaaljukxa.supabase.co/functions/v1/send-reminders"
+      # GitHub zet geplande taken uit na 60 dagen zonder activiteit in de repository; dit houdt hem aan
+      - name: Taak actief houden
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/reminders.yml/enable"

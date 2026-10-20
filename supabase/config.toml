@@ -1,0 +1,4 @@
+# Alleen nodig als je de Supabase-commandoregel gebruikt.
+# De herinneringsfunctie controleert zelf een geheime sleutel, dus zonder inlogtoken van een gebruiker.
+[functions.send-reminders]
+verify_jwt = false
