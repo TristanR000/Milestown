@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#8ccc6c">
 <meta name="description" content="Milestown: een pixelstad die groeit met je echte prestaties.">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -100,7 +100,8 @@ canvas { image-rendering: pixelated; }
 
 .form { display: flex; flex-direction: column; gap: 8px; }
 .form label { font-family: var(--pixel); font-size: 19px; font-weight: 700; }
-textarea, input[type="text"] { width: 100%; box-sizing: border-box; border: 3px solid var(--ink); border-radius: 8px; padding: 9px 12px; font: inherit; font-weight: 700; background: #fff; color: var(--ink); resize: vertical; }
+textarea, input[type="text"], input[type="email"], input[type="password"] { width: 100%; box-sizing: border-box; border: 3px solid var(--ink); border-radius: 8px; padding: 9px 12px; font: inherit; font-size: max(16px, calc(16px / var(--ui, 1))); font-weight: 700; background: #fff; color: var(--ink); resize: vertical; }
+/* iOS zoomt in op velden met tekst onder de 16px; ook met kleinere menu's blijft de tekst daarom minstens 16px op het scherm */
 textarea::placeholder, input::placeholder { color: var(--ink-soft); opacity: .75; font-weight: 600; }
 .form .row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
@@ -211,6 +212,10 @@ body.inside #tut { top: calc(116px + env(safe-area-inset-top, 0px)); }
 @media (max-width: 759px) { body.inside #tut { padding: 8px 10px; gap: 8px; } body.inside #tut > canvas { width: 36px; height: 36px; } body.inside .tut-main b { display: none; } body.inside .tut-main p { min-height: 0; font-size: 13.5px; } }
 /* jezelf maken */
 .creator canvas#creatorPrev { width: 252px; height: 138px; background: var(--box-2); border-radius: 10px; border: 3px solid var(--ink); }
+/* lange vensters op kleine schermen: scrollen in plaats van van het scherm vallen */
+.modal-wrap { overflow-y: auto; overscroll-behavior: contain; }
+.modal-wrap > * { margin-block: auto; }
+@media (max-height: 720px) { .creator canvas#creatorPrev { width: 184px; height: 101px; } .creator { gap: 8px; padding: 18px; } }
 .pickrow { display: flex; align-items: center; gap: 10px; justify-content: center; }
 .pickrow span { min-width: 96px; }
 .pickrow .btn { min-width: 44px; min-height: 36px; font-size: 18px; }
@@ -655,6 +660,9 @@ function resize() {
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
 }
 window.addEventListener("resize", resize);
+// mocht iOS toch inzoomen bij een invoerveld: na het typen de maten opnieuw uitrekenen
+if (window.visualViewport) visualViewport.addEventListener("resize", resize);
+document.addEventListener("focusout", () => setTimeout(resize, 300));
 resize();
 const toWorld = (sx, sy) => ({ x: (sx - W / 2) / cam.z + cam.x, y: (sy - H / 2) / cam.z + cam.y });
 const toScreen = (wx, wy) => ({ x: (wx - cam.x) * cam.z + W / 2, y: (wy - cam.y) * cam.z + H / 2 });
