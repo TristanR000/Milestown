@@ -4,7 +4,7 @@ Een pixelstad die groeit met je echte prestaties. Elke prestatie levert een nieu
 
 - **App:** https://tristanr000.github.io/Milestown/ (zodra GitHub Pages aan staat)
 - Installeerbaar als app op je telefoon, werkt ook offline
-- Inloggen met een code per e-mail, je stad staat in je account (Supabase)
+- Inloggen met e-mail en wachtwoord, je stad staat in je account (Supabase)
 - Eén rustige melding als een taak drie dagen wacht
 
 ## Hoe het in elkaar zit
@@ -23,13 +23,9 @@ Een pixelstad die groeit met je echte prestaties. Elke prestatie levert een nieu
 ### 1. Database (Supabase → SQL Editor)
 Plak de inhoud van `supabase/schema.sql` in **SQL Editor → New query** en klik op **Run**.
 
-### 2. Inloggen met een code (Supabase → Authentication)
-- **Authentication → Emails → Magic Link**: zet de code in de e-mail, bijvoorbeeld:
-  ```html
-  <h2>Je inlogcode voor Milestown</h2>
-  <p>Typ deze code in de app: <strong>{{ .Token }}</strong></p>
-  ```
-- **Authentication → URL Configuration → Site URL**: `https://tristanr000.github.io/Milestown/`
+### 2. Inloggen met e-mail en wachtwoord (Supabase → Authentication)
+- **Authentication → Sign In / Providers → Email**: zet **Confirm email** uit. Zo zijn er geen e-mails nodig om een account te maken.
+- **Authentication → URL Configuration → Site URL**: `https://tristanr000.github.io/Milestown/` (voor de mail bij "Wachtwoord vergeten").
 
 ### 3. De herinneringsfunctie (Supabase → Edge Functions)
 1. **Deploy a new function → Via Editor**, naam `send-reminders`.

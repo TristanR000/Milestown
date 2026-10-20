@@ -402,7 +402,7 @@ document.addEventListener("visibilitychange", () => { if (document.hidden && loc
 /* ---------- Account en synchronisatie (Supabase) ---------- */
 // de stad staat altijd op dit apparaat; met een account wordt hij ook in de cloud bewaard
 const CFG = window.MILESTOWN || {};
-const sb = window.supabase && CFG.supabaseUrl ? window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } }) : null;
+const sb = window.supabase && CFG.supabaseUrl ? window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "implicit" } }) : null;
 const store = { user: null, mode: "local", syncing: false, again: false, dirty: false, timer: 0 };
 function saveCity() { state.updatedAt = Date.now(); saveLocal(); queueCloud(); }
 function saveResident(r) { state.updatedAt = Date.now(); saveLocal(); queueCloud(); }
@@ -470,48 +470,66 @@ async function connectAccount() {
 }
 const accountReady = () => Promise.race([connectAccount(), new Promise(r => setTimeout(r, 5000))]);
 
-/* ---------- Inloggen met een code per e-mail ---------- */
-function openLogin(after) {
+/* ---------- Inloggen met e-mail en wachtwoord ---------- */
+function openLogin(after, mode = "in") {
   if (!sb) { toast("Inloggen is hier niet beschikbaar."); return; }
-  modal(`<form class="modal" id="loginForm"><div class="gift">Inloggen</div><h2>Je stad in je account</h2>
-    <p>Vul je e-mailadres in. Je krijgt een code om in te loggen, zonder wachtwoord. Zo staat je stad veilig in je account en zie je hem op al je apparaten.</p>
+  const signup = mode === "up";
+  modal(`<form class="modal" id="loginForm"><div class="gift">${signup ? "Account maken" : "Inloggen"}</div><h2>${signup ? "Maak je account" : "Je stad in je account"}</h2>
+    <p>${signup ? "Kies een e-mailadres en een wachtwoord. Zo staat je stad veilig in je account en zie je hem op al je apparaten." : "Log in met je e-mailadres en wachtwoord."}</p>
     <input type="email" id="loginEmail" autocomplete="email" placeholder="jij@voorbeeld.nl" aria-label="E-mailadres" required>
-    <button class="btn primary" type="submit" id="loginSend">Stuur mij een code</button>
+    <input type="password" id="loginPw" autocomplete="${signup ? "new-password" : "current-password"}" placeholder="Wachtwoord${signup ? " (minstens 8 tekens)" : ""}" aria-label="Wachtwoord" minlength="${signup ? 8 : 1}" required>
+    <button class="btn primary" type="submit" id="loginGo">${signup ? "Account maken" : "Inloggen"}</button>
+    <button class="btn ghost small" type="button" id="loginSwitch">${signup ? "Ik heb al een account" : "Nog geen account? Maak er een"}</button>
+    ${signup ? "" : `<button class="btn ghost small" type="button" id="loginForgot">Wachtwoord vergeten</button>`}
     <button class="btn ghost small" type="button" id="loginNo">Nu niet</button></form>`, () => {
     $("loginEmail").focus();
     $("loginNo").onclick = closeModal;
+    $("loginSwitch").onclick = () => openLogin(after, signup ? "in" : "up");
+    if ($("loginForgot")) $("loginForgot").onclick = () => forgotPassword($("loginEmail").value.trim());
     $("loginForm").onsubmit = async e => {
       e.preventDefault();
-      const email = $("loginEmail").value.trim(); if (!email) return;
-      $("loginSend").disabled = true; $("loginSend").textContent = "Bezig…";
-      const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
-      if (error) { $("loginSend").disabled = false; $("loginSend").textContent = "Stuur mij een code"; toast(error.status === 429 ? "Er zijn net al codes verstuurd. Probeer het over een paar minuten opnieuw." : "Versturen lukte niet. Controleer je e-mailadres en probeer het opnieuw."); return; }
-      openCode(email, after);
+      const email = $("loginEmail").value.trim(), password = $("loginPw").value; if (!email || !password) return;
+      const go = $("loginGo"), label = go.textContent; go.disabled = true; go.textContent = "Bezig…";
+      const { data, error } = signup ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
+      if (error || !data.user) {
+        go.disabled = false; go.textContent = label;
+        const msg = !error ? "Dat lukte niet. Probeer het nog eens." : /already registered|already exists/i.test(error.message) ? "Er bestaat al een account met dit e-mailadres. Log in." : /invalid login|credentials/i.test(error.message) ? "E-mailadres of wachtwoord klopt niet." : /password/i.test(error.message) ? "Kies een wachtwoord van minstens 8 tekens." : error.status === 429 ? "Even te vaak geprobeerd. Wacht een paar minuten." : "Dat lukte niet. Controleer je gegevens en probeer het opnieuw.";
+        toast(msg); return;
+      }
+      if (!data.session) { closeModal(); toast("Bevestig eerst je e-mailadres via de mail die je kreeg, en log daarna in."); return; }
+      await loggedIn(data.user, after);
     };
   });
 }
-function openCode(email, after) {
-  modal(`<form class="modal" id="codeForm"><div class="gift">Inloggen</div><h2>Typ je code</h2>
-    <p>We hebben een code gestuurd naar <b>${esc(email)}</b>. Kijk ook even in je spam.</p>
-    <input type="text" id="loginCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456" aria-label="Code uit de e-mail" required>
-    <button class="btn primary" type="submit" id="codeGo">Inloggen</button>
-    <button class="btn ghost small" type="button" id="codeBack">Ander e-mailadres</button></form>`, () => {
-    $("loginCode").focus();
-    $("codeBack").onclick = () => openLogin(after);
-    $("codeForm").onsubmit = async e => {
+async function loggedIn(user, after) {
+  closeModal();
+  try { await startCloud(user); toast("Ingelogd! Je stad wordt nu in je account bewaard."); } catch (err) { toast("Ingelogd, maar je stad ophalen lukte even niet."); }
+  refreshHud();
+  if (!state.cityName) showNameModal();
+  after && after();
+}
+async function forgotPassword(email) {
+  if (!email) { toast("Vul eerst je e-mailadres in."); return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+  toast(error ? (error.status === 429 ? "Er is net al een mail verstuurd. Probeer het later opnieuw." : "Versturen lukte niet. Probeer het later opnieuw.") : "Als dit e-mailadres een account heeft, krijg je een mail met een link om een nieuw wachtwoord te kiezen.");
+}
+// via de link uit de wachtwoordmail: een nieuw wachtwoord kiezen
+function openNewPassword() {
+  modal(`<form class="modal" id="pwForm"><div class="gift">Nieuw wachtwoord</div><h2>Kies een nieuw wachtwoord</h2>
+    <input type="password" id="newPw" autocomplete="new-password" minlength="8" placeholder="Minstens 8 tekens" aria-label="Nieuw wachtwoord" required>
+    <button class="btn primary" type="submit" id="pwGo">Opslaan</button></form>`, () => {
+    $("newPw").focus();
+    $("pwForm").onsubmit = async e => {
       e.preventDefault();
-      const token = $("loginCode").value.replace(/\s/g, ""); if (!token) return;
-      $("codeGo").disabled = true; $("codeGo").textContent = "Bezig…";
-      const { data, error } = await sb.auth.verifyOtp({ email, token, type: "email" });
-      if (error || !data.user) { $("codeGo").disabled = false; $("codeGo").textContent = "Inloggen"; toast("Die code klopt niet of is verlopen. Probeer het nog eens."); return; }
-      closeModal();
-      try { await startCloud(data.user); toast("Ingelogd! Je stad wordt nu in je account bewaard."); } catch (err) { toast("Ingelogd, maar je stad ophalen lukte even niet."); }
-      refreshHud();
-      if (!state.cityName) showNameModal();
-      after && after();
+      $("pwGo").disabled = true;
+      const { data, error } = await sb.auth.updateUser({ password: $("newPw").value });
+      if (error) { $("pwGo").disabled = false; toast("Opslaan lukte niet. Kies een wachtwoord van minstens 8 tekens."); return; }
+      await loggedIn(data.user);
+      toast("Je nieuwe wachtwoord is opgeslagen.");
     };
   });
 }
+if (sb) sb.auth.onAuthStateChange(event => { if (event === "PASSWORD_RECOVERY") setTimeout(openNewPassword, 300); });
 async function logout() {
   try { await disablePush(true); } catch (e) {}
   await sb.auth.signOut();
